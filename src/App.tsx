@@ -55,6 +55,32 @@ import {
 const AUTOSAVE_MS = 600;
 type View = "editor" | "graph" | "ai";
 
+function stemOfPath(path: string): string {
+  return (path.split("/").pop() ?? path).replace(/\.md$/i, "");
+}
+
+function shouldAutoRenameUntitled(path: string): boolean {
+  return /^Untitled(?: \d+)?$/i.test(stemOfPath(path));
+}
+
+function titleFromMarkdown(markdown: string): string | null {
+  const lines = markdown.split(/\r?\n/);
+  let inFrontmatter = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line === "---") {
+      inFrontmatter = !inFrontmatter;
+      continue;
+    }
+    if (inFrontmatter) continue;
+    const title = line.replace(/^#+\s*/, "").replace(/^[>*-]\s*/, "").trim();
+    if (!title || /^\{\{.*\}\}$/.test(title)) continue;
+    return title.slice(0, 120);
+  }
+  return null;
+}
+
 export default function App() {
   const { t, lang } = useI18n();
   const { prefs } = usePrefs();
@@ -231,16 +257,31 @@ export default function App() {
       if (!vault || !activePath) return;
       // Re-attach the note's frontmatter (kept out of the editor) before saving.
       const full = joinFrontmatter(frontmatter.current, next);
+      const pathAtSchedule = activePath;
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(() => {
-        void writeNote(vault, activePath, full).then(() => {
-          pushRemote(activePath, full);
+        void writeNote(vault, pathAtSchedule, full).then(async () => {
+          pushRemote(pathAtSchedule, full);
+          let finalPath = pathAtSchedule;
+          const inferredTitle = titleFromMarkdown(next);
+          if (
+            inferredTitle &&
+            shouldAutoRenameUntitled(pathAtSchedule) &&
+            inferredTitle.toLowerCase() !== stemOfPath(pathAtSchedule).toLowerCase()
+          ) {
+            finalPath = await renameNote(vault, pathAtSchedule, inferredTitle);
+            setActivePath((current) => (current === pathAtSchedule ? finalPath : current));
+            if (remote) {
+              pushRemote(finalPath, full);
+              deleteRemote(pathAtSchedule);
+            }
+          }
           // Refresh the list so the sidebar title (first heading) updates live.
           void refreshNotes(vault);
         });
       }, AUTOSAVE_MS);
     },
-    [vault, activePath, pushRemote, refreshNotes]
+    [vault, activePath, pushRemote, refreshNotes, remote, deleteRemote]
   );
 
   const createNewNote = useCallback(async () => {
