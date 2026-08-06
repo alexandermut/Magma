@@ -57,6 +57,7 @@ pub struct GraphNode {
     pub path: String,
     pub title: String,
     pub ai_authored: bool,
+    pub ai_client: Option<String>,
     /// Number of links touching this note (in + out) — drives node size.
     pub degree: usize,
     /// True for a link target that has no note yet. Shown as a ghost node so an
@@ -142,6 +143,7 @@ pub fn build_graph(vault: &Path, exclude: &[String]) -> std::io::Result<Graph> {
             path: n.path,
             title: n.title,
             ai_authored: n.ai_authored,
+            ai_client: n.ai_client,
             missing: false,
         })
         .collect();
@@ -151,6 +153,7 @@ pub fn build_graph(vault: &Path, exclude: &[String]) -> std::io::Result<Graph> {
             path: id,
             title: name,
             ai_authored: false,
+            ai_client: None,
             missing: true,
         });
     }
@@ -244,6 +247,7 @@ pub fn backlinks(vault: &Path, target_path: &str) -> std::io::Result<Vec<NoteMet
                 path: note.path.clone(),
                 title: note.title.clone(),
                 ai_authored: note.ai_authored,
+                ai_client: note.ai_client.clone(),
                 modified: note.modified,
             });
         }
